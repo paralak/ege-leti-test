@@ -4,3 +4,5 @@ www/variant/answers.xml
 www/variant/.answers.lock
 www/variant/answers.xml.tmp.*
 www/variant/answers.xml.bak.*
+www/variant/answers.xml.previous.*
+www/variant/answers.xml.invalid.*

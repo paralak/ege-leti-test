@@ -1,4 +1,5 @@
 <?php
+header('Content-Type: text/html; charset=UTF-8');
 require_once __DIR__ . '/answer_store.php';
 function loadXmlFile($filename)
 {
@@ -31,11 +32,19 @@ function ensureAnswerSession($filename, $variantId) {
             }
             $document = new DOMDocument('1.0', 'UTF-8');
             if (!$document->load($filename, LIBXML_NONET)) {
-                return 0;
+                $archive = $filename . '.invalid.' . date('Ymd-His');
+                if (!rename($filename, $archive)) return 0;
+                $document = createAnswersDocument($variantId);
+                atomicWriteAnswers($filename, $document);
+                return (int)$document->documentElement->getAttribute('started_at');
             }
             $root = $document->documentElement;
             if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
-                return 0;
+                $archive = $filename . '.previous.' . date('Ymd-His');
+                if (!rename($filename, $archive)) return 0;
+                $document = createAnswersDocument($variantId);
+                atomicWriteAnswers($filename, $document);
+                return (int)$document->documentElement->getAttribute('started_at');
             }
             if ($root->getAttribute('started_at') === '') {
                 $root->setAttribute('started_at', (string)time());

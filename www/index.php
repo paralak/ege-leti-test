@@ -292,7 +292,10 @@ foreach ($answers->answer as $answer) {
 
                 if (isset($task->attachments)) {
                     foreach ($task->attachments->file as $file) {
-                        $extraFiles[] = (string)$file;
+                        $fileName = (string)$file;
+                        if (!preg_match('/\.(?:png|jpe?g|gif|webp|svg)$/i', $fileName)) {
+                            $extraFiles[] = $fileName;
+                        }
                     }
                 }
 

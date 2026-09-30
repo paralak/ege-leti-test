@@ -48,8 +48,9 @@ function atomicWriteAnswers($filename, DOMDocument $document) {
         throw new RuntimeException('Не удалось сформировать XML ответов');
     }
 
-    $temporary = $filename . '.tmp.' . bin2hex(random_bytes(6));
-    $backup = $filename . '.bak.' . bin2hex(random_bytes(6));
+    $transactionId = bin2hex(random_bytes(6));
+    $temporary = $filename . '.tmp.' . $transactionId;
+    $backup = $filename . '.bak.' . $transactionId;
     writeFileCompletely($temporary, $content);
 
     $hadOriginal = is_file($filename);
@@ -75,6 +76,37 @@ function atomicWriteAnswers($filename, DOMDocument $document) {
     }
 }
 
+function recoverAnswersIfNeeded($filename, $variantId) {
+    if (is_file($filename)) {
+        return;
+    }
+
+    $backups = glob($filename . '.bak.*') ?: [];
+    usort($backups, function ($left, $right) {
+        return filemtime($right) <=> filemtime($left);
+    });
+    foreach ($backups as $backup) {
+        $transactionId = substr($backup, strlen($filename . '.bak.'));
+        $temporary = $filename . '.tmp.' . $transactionId;
+        if ($transactionId === '' || !is_file($temporary)) {
+            continue;
+        }
+        $document = new DOMDocument('1.0', 'UTF-8');
+        if ($document->load($backup, LIBXML_NONET)) {
+            $root = $document->documentElement;
+            if ($root !== null && $root->tagName === 'answers'
+                && $root->getAttribute('variant_id') === $variantId
+                && $root->getAttribute('kind') === 'student') {
+                if (!rename($backup, $filename)) {
+                    throw new RuntimeException('Не удалось восстановить резервную копию ответов');
+                }
+                @unlink($temporary);
+                return;
+            }
+        }
+    }
+}
+
 function createAnswersDocument($variantId, $startedAt = null) {
     $document = new DOMDocument('1.0', 'UTF-8');
     $document->formatOutput = true;
@@ -84,4 +116,3 @@ function createAnswersDocument($variantId, $startedAt = null) {
     $root->setAttribute('started_at', (string)($startedAt ?: time()));
     return $document;
 }
-

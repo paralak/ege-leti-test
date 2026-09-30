@@ -44,20 +44,20 @@
         "log_severity": "default",
         "cache_path": "webcache",
         "external_drag": true,
-        "external_navigation": true,
-        "reload_page_F5": true,
-        "devtools_F12": true,
+        "external_navigation": false,
+        "reload_page_F5": false,
+        "devtools_F12": false,
         "remote_debugging_port": 0,
         "runtime_style": "alloy",
         "command_line_switches": {"disable-gpu": ""},
         "enable_downloads": true,
         "context_menu": {
             "enable_menu": false,
-            "navigation": true,
+            "navigation": false,
             "print": true,
-            "view_source": true,
-            "open_in_external_browser": true,
-            "devtools": true
+            "view_source": false,
+            "open_in_external_browser": false,
+            "devtools": false
         }
     }
 }

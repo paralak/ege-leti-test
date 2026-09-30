@@ -23,6 +23,7 @@ function loadXmlFile($filename)
 function ensureAnswerSession($filename, $variantId) {
     try {
         return withAnswersLock(function () use ($filename, $variantId) {
+            recoverAnswersIfNeeded($filename, $variantId);
             if (!is_file($filename) || filesize($filename) === 0) {
                 $document = createAnswersDocument($variantId);
                 atomicWriteAnswers($filename, $document);
@@ -62,6 +63,8 @@ $durationMinutes = max(1, (int)$manifest->duration_minutes);
 $tasks = loadXmlFile(__DIR__ . '/variant/tasks.xml');
 $startedAt = ensureAnswerSession(__DIR__ . '/variant/answers.xml', $variantId);
 $answers = loadXmlFile(__DIR__ . '/variant/answers.xml');
+$serverNow = time();
+$examExpired = $startedAt > 0 && $serverNow >= $startedAt + ($durationMinutes * 60);
 
 $startupErrors = [];
 if ($startedAt <= 0) {
@@ -180,7 +183,6 @@ foreach ($answers->answer as $answer) {
             </div>
 
             <button type="button" class="scroll-btn" id="scrollDownBtn" onclick="scrollTasks(1)" aria-label="Прокрутить задания вниз">↓</button>
-            <button type="button" class="reset-exam-btn" id="resetExamBtn">Новая попытка</button>
         </div>
     </div>
     <div class="wrapper" id="tasksWrapper">
@@ -330,6 +332,7 @@ foreach ($answers->answer as $answer) {
             'durationSeconds' => $durationMinutes * 60,
             'startedAtMs' => $startedAt * 1000,
             'serverNowMs' => time() * 1000,
+            'expired' => $examExpired,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     </script>
     <script src="script.js"></script>

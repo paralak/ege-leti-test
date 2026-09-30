@@ -8,7 +8,6 @@ function initApp() {
     initNavigation();
     loadCountAnswer();
     loadDoneBtnTasks();
-    setupResetAttempt();
 }
 
 function loadDoneBtnTasks() {
@@ -39,6 +38,13 @@ function initTimer() {
         ? Math.max(0, (serverNow - configuredStart) / 1000)
         : 0;
     const monotonicStart = performance.now();
+
+    if (window.examConfig?.expired) {
+        examExpired = true;
+        timerElem.textContent = 'Время вышло!';
+        lockExamControls();
+        return;
+    }
 
     function updateTimer() {
         const elapsedTime = elapsedBeforeLoad + (performance.now() - monotonicStart) / 1000;
@@ -79,7 +85,7 @@ async function finishExam() {
 }
 
 function lockExamControls() {
-    document.querySelectorAll('.answer-input, .save-btn, .clear-button, #resetExamBtn').forEach(control => {
+    document.querySelectorAll('.answer-input, .save-btn, .clear-button').forEach(control => {
         control.disabled = true;
     });
 }
@@ -131,28 +137,6 @@ async function saveAnswer(task, silent = false) {
     } finally {
         saveBtn.disabled = false;
     }
-}
-
-function setupResetAttempt() {
-    const button = document.getElementById('resetExamBtn');
-    if (!button) return;
-    button.addEventListener('click', async () => {
-        if (!confirm('Удалить все ответы и запустить таймер заново? Отменить это действие нельзя.')) return;
-        button.disabled = true;
-        try {
-            const body = new FormData();
-            body.append('confirm', 'RESET');
-            const response = await fetch('resetAttempt.php', { method: 'POST', body });
-            const data = await response.json();
-            if (!response.ok || data.status !== 'success') {
-                throw new Error(data.message || 'Не удалось начать новую попытку');
-            }
-            location.reload();
-        } catch (error) {
-            alert(error.message);
-            button.disabled = false;
-        }
-    });
 }
 
 function setSavedFlag(task) {

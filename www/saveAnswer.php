@@ -20,6 +20,7 @@ if ($number === false || $number === null || $number < 1 || $taskId === '') {
 
 $manifest = simplexml_load_file(__DIR__ . '/variant/manifest.xml', 'SimpleXMLElement', LIBXML_NONET);
 $variantId = $manifest !== false ? (string)$manifest->id : '';
+$durationSeconds = $manifest !== false ? max(60, (int)$manifest->duration_minutes * 60) : 0;
 if ($variantId === '') {
     respond(['status' => 'error', 'message' => 'Не удалось определить вариант'], 500);
 }
@@ -39,8 +40,9 @@ if (!$validTask) {
 }
 
 try {
-    $result = withAnswersLock(function () use ($variantId, $taskId, $number) {
+    $result = withAnswersLock(function () use ($variantId, $taskId, $number, $durationSeconds) {
         $xmlFile = __DIR__ . '/variant/answers.xml';
+        recoverAnswersIfNeeded($xmlFile, $variantId);
         $document = new DOMDocument('1.0', 'UTF-8');
         $document->formatOutput = true;
         if (!is_file($xmlFile) || filesize($xmlFile) === 0) {
@@ -51,6 +53,10 @@ try {
         $root = $document->documentElement;
         if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
             throw new RuntimeException('Файл ответов относится к другому варианту');
+        }
+        $startedAt = (int)$root->getAttribute('started_at');
+        if ($startedAt <= 0 || time() > $startedAt + $durationSeconds + 30) {
+            throw new RuntimeException('Время выполнения истекло, ответ не сохранён');
         }
 
         $existing = null;

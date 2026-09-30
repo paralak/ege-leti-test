@@ -56,7 +56,7 @@ foreach ($answers->answer as $answer) {
                 <p>Дано ответов</p>
                 <p id="existingAnswers">0/<?= count($tasksArray) ?></p>
             </div>
-            <div class="scroll-btn" id="scrollUpBtn" onclick="scrollTasks(-10)"><p>↑</p></div>
+            <button type="button" class="scroll-btn" id="scrollUpBtn" onclick="scrollTasks(-1)" aria-label="Прокрутить задания вверх">↑</button>
 
             <div class="tasks-grid">
                 <button class="task-btn i" onclick="showTask('i')"><p>
@@ -69,7 +69,7 @@ foreach ($answers->answer as $answer) {
                 <?php endforeach; ?>
             </div>
 
-            <div class="scroll-btn" id="scrollDownBtn" onclick="scrollTasks(10)"><p>↓</p></div>
+            <button type="button" class="scroll-btn" id="scrollDownBtn" onclick="scrollTasks(1)" aria-label="Прокрутить задания вниз">↓</button>
         </div>
     </div>
     <div class="wrapper" id="tasksWrapper">

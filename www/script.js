@@ -362,9 +362,6 @@ function updateActiveTaskButton(taskNumber) {
 }
 
 function updateDoneTaskButton(taskNumber) {
-    // Убираем активный класс у всех кнопок
-    removeFlag('active');
-
     // Добавляем активный класс к текущей кнопке
     document.querySelectorAll('.task-btn').forEach(btn => {
         if (parseInt(btn.textContent) === parseInt(taskNumber)) {
@@ -374,8 +371,6 @@ function updateDoneTaskButton(taskNumber) {
 }
 
 function removeDoveTaskButton(taskNumber) {
-    removeFlag('active')
-
     document.querySelectorAll('.task-btn').forEach(btn => {
         if (parseInt(btn.textContent) === parseInt(taskNumber)) {
             btn.classList.remove('done');
@@ -384,23 +379,22 @@ function removeDoveTaskButton(taskNumber) {
 }
 
 
-const buttonHeight = 62;
-
 function updateScrollButtons() {
     const scrollUpBtn = document.getElementById('scrollUpBtn');
     const scrollDownBtn = document.getElementById('scrollDownBtn');
     const container = document.querySelector('.tasks-grid');
 
     // Отключаем кнопку "вверх" если мы в начале списка
-    scrollUpBtn.disabled = container.scrollTop <= 0;
+    scrollUpBtn.disabled = container.scrollTop <= 1;
     // Отключаем кнопку "вниз" если мы в конце списка
     scrollDownBtn.disabled = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
 }
 
 function scrollTasks(direction) {
     const container = document.querySelector('.tasks-grid');
+    const distance = Math.max(1, Math.floor(container.clientHeight * 0.8));
     container.scrollBy({
-        top: direction * buttonHeight,
+        top: direction * distance,
         behavior: 'smooth'
     });
 
@@ -411,23 +405,25 @@ function scrollTasks(direction) {
 }
 
 function ensureTaskVisible(taskNumber) {
-    const taskIndex = taskNumbers.indexOf(taskNumber);
-    if (taskIndex === -1) return;
-
     const container = document.querySelector('.tasks-grid');
-    const buttonPosition = taskIndex * buttonHeight;
+    const targetButton = Array.from(container.querySelectorAll('.task-btn')).find(btn => {
+        const value = btn.textContent.trim();
+        return value === String(taskNumber);
+    });
 
-    // Прокручиваем так, чтобы кнопка была видна
-    const containerTop = container.scrollTop;
-    const containerBottom = containerTop + container.clientHeight;
+    if (!targetButton) return;
 
-    if (buttonPosition < containerTop) {
-        // Кнопка выше видимой области - прокручиваем к ней
-        container.scrollTo({ top: buttonPosition, behavior: 'smooth' });
-    } else if (buttonPosition + buttonHeight > containerBottom) {
-        // Кнопка ниже видимой области - прокручиваем так, чтобы она была видна внизу
-        container.scrollTo({
-            top: buttonPosition - container.clientHeight + buttonHeight,
+    const containerRect = container.getBoundingClientRect();
+    const buttonRect = targetButton.getBoundingClientRect();
+
+    if (buttonRect.top < containerRect.top) {
+        container.scrollBy({
+            top: buttonRect.top - containerRect.top,
+            behavior: 'smooth'
+        });
+    } else if (buttonRect.bottom > containerRect.bottom) {
+        container.scrollBy({
+            top: buttonRect.bottom - containerRect.bottom,
             behavior: 'smooth'
         });
     }
@@ -444,6 +440,7 @@ document.addEventListener('DOMContentLoaded', function () {
         container.addEventListener('scroll', function () {
             updateScrollButtons();
         });
+        window.addEventListener('resize', updateScrollButtons);
     }
 });
 

@@ -17,10 +17,24 @@ if ($number === false || $number === null || $number < 1 || $taskId === '') {
     respond(['status' => 'error', 'message' => 'Некорректные данные задания'], 400);
 }
 
-$manifest = simplexml_load_file(__DIR__ . '/variant/manifest.xml');
+$manifest = simplexml_load_file(__DIR__ . '/variant/manifest.xml', 'SimpleXMLElement', LIBXML_NONET);
 $variantId = $manifest !== false ? (string)$manifest->id : '';
 if ($variantId === '') {
     respond(['status' => 'error', 'message' => 'Не удалось определить вариант'], 500);
+}
+
+$tasks = simplexml_load_file(__DIR__ . '/variant/tasks.xml', 'SimpleXMLElement', LIBXML_NONET);
+$validTask = false;
+if ($tasks !== false && (string)$tasks['variant_id'] === $variantId) {
+    foreach ($tasks->task as $task) {
+        if ((string)$task->id === $taskId && (int)$task->number === $number) {
+            $validTask = true;
+            break;
+        }
+    }
+}
+if (!$validTask) {
+    respond(['status' => 'error', 'message' => 'Задание не найдено в текущем варианте'], 404);
 }
 
 $xmlFile = __DIR__ . '/variant/answers.xml';
@@ -70,15 +84,23 @@ if (($_POST['action'] ?? 'save') === 'load') {
     respond(['status' => 'success', 'answer' => $value]);
 }
 
+$hadAnswer = false;
+if ($existing !== null) {
+    $existingValues = $existing->getElementsByTagName('value');
+    $hadAnswer = $existingValues->length > 0 && trim($existingValues->item(0)->textContent) !== '';
+}
 if ($existing !== null) {
     $root->removeChild($existing);
 }
 
-$answer = $root->appendChild($document->createElement('answer'));
-$answer->setAttribute('task_id', $taskId);
-$answer->setAttribute('number', (string)$number);
-$value = $answer->appendChild($document->createElement('value'));
-$value->appendChild($document->createTextNode((string)($_POST['answer'] ?? '')));
+$newValue = trim((string)($_POST['answer'] ?? ''));
+if ($newValue !== '') {
+    $answer = $root->appendChild($document->createElement('answer'));
+    $answer->setAttribute('task_id', $taskId);
+    $answer->setAttribute('number', (string)$number);
+    $value = $answer->appendChild($document->createElement('value'));
+    $value->appendChild($document->createTextNode($newValue));
+}
 
 $serialized = $document->saveXML();
 rewind($handle);
@@ -100,4 +122,9 @@ if ($written !== $length) {
     respond(['status' => 'error', 'message' => 'Не удалось полностью сохранить ответы'], 500);
 }
 
-respond(['status' => 'success', 'message' => 'Ответ сохранён']);
+respond([
+    'status' => 'success',
+    'message' => 'Ответ сохранён',
+    'hadAnswer' => $hadAnswer,
+    'hasAnswer' => $newValue !== '',
+]);

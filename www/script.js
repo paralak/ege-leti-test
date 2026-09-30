@@ -29,21 +29,11 @@ function loadCountAnswer() {
 function initTimer() {
     // Таймер на 3 часа 50 минут
     const totalSeconds = Number(window.examConfig?.durationSeconds) || 235 * 60;
-    const variantId = window.examConfig?.variantId || 'unknown-variant';
-    const timerStorageKey = 'examStartTime:' + variantId;
     const timerElem = document.getElementById('timer');
-
-    let startTime = localStorage.getItem(timerStorageKey);
-    if (!startTime) {
-        startTime = Date.now();
-        localStorage.setItem(timerStorageKey, startTime);
-    } else {
-        startTime = parseInt(startTime, 10);
-        if (!Number.isFinite(startTime) || startTime > Date.now()) {
-            startTime = Date.now();
-            localStorage.setItem(timerStorageKey, startTime);
-        }
-    }
+    const configuredStart = Number(window.examConfig?.startedAtMs);
+    const startTime = Number.isFinite(configuredStart) && configuredStart > 0
+        ? configuredStart
+        : Date.now();
 
     function updateTimer() {
         const curTime = Date.now();
@@ -64,9 +54,19 @@ function initTimer() {
         if (remaining === 0) {
             timerElem.textContent = "Время вышло!";
             clearInterval(timerInterval);
+            finishExam();
         }
     }, 1000);
     updateTimer();
+}
+
+async function finishExam() {
+    const dirtyTasks = Array.from(document.querySelectorAll('.task-box:not(.task-i)'))
+        .filter(task => task.dataset.dirty === 'true');
+    await Promise.allSettled(dirtyTasks.map(task => saveAnswer(task)));
+    document.querySelectorAll('.answer-input, .save-btn, .clear-button').forEach(control => {
+        control.disabled = true;
+    });
 }
 
 function setupSaveBtn() {
@@ -75,85 +75,53 @@ function setupSaveBtn() {
     });
 }
 
-function saveAnswer(task) {
-    // Извлекаем необходимые данные из элементов
+async function saveAnswer(task) {
     const number = task.querySelector('.task-number').innerText;
     const taskID = task.querySelector('.task-id').innerText;
     const answerInputs = task.querySelectorAll('.answer-input');
-
     const curAnswer = Array.from(answerInputs).map(ans => ans.value.trim());
-    const hasCurValue = curAnswer.some(value => value !== '');
+    const saveBtn = task.querySelector('.save-btn');
+    const formData = new FormData();
+    formData.append('taskID', taskID);
+    formData.append('number', number);
+    formData.append('answer', curAnswer.join(';'));
 
-    // const hasPastValue = savedAnswers.has(number);
-    const formDataLoad = new FormData();
-    formDataLoad.append('taskID', taskID);
-    formDataLoad.append('number', number);
-    formDataLoad.append('action', 'load');
-    let hasPastValue = false;
-    fetch('saveAnswer.php', {
-        method: 'POST',
-        body: formDataLoad
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success' && data.answer) {
-                console.log(data.answer);
-                if (data.answer !== '') {
-                    hasPastValue = true;
-                } else {
-                    hasPastValue = false;
-                }
-            }
+    saveBtn.disabled = true;
+    saveBtn.value = 'Сохраняется…';
+    try {
+        const response = await fetch('saveAnswer.php', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            throw new Error(data.message || 'Не удалось сохранить ответ');
+        }
 
-            console.log(hasPastValue)
-
-            const formData = new FormData();
-            formData.append('taskID', taskID);
-            formData.append('number', number);
-            // Собираем значения всех input'ов
-            formData.append('answer', curAnswer.join(';'));
-
-            // Отправляем POST-запрос
-            fetch('saveAnswer.php', { // Укажите правильный путь к вашему PHP-файлу
-                method: 'POST',
-                body: formData
-                // Не нужно указывать Content-Type - браузер установит его автоматически с boundary
-            })
-                .then(response => response.json())
-                .then(data => {
-                    console.log(hasPastValue)
-                    if (data.status === 'success') {
-                        let doneUpdate = true
-                        if (hasCurValue && !hasPastValue) {
-                            increaseAnswersCount();
-                        } else if (!hasCurValue && hasPastValue) {
-                            decreaseAnswersCount();
-                            removeDoveTaskButton(number);
-                            rmSavedFlag(task);
-                            doneUpdate = false
-                        }
-
-                        if (doneUpdate) {
-                            setSavedFlag(task)
-                            updateDoneTaskButton(number);
-                        }
-
-                        updateClearButtonVisibility(task);
-                    } else {
-                        alert('Ошибка: ' + data.message);
-                    }
-                })
-        });
+        if (data.hasAnswer) {
+            setSavedFlag(task);
+            updateDoneTaskButton(number);
+        } else {
+            rmSavedFlag(task);
+            removeDoveTaskButton(number);
+        }
+        task.dataset.dirty = 'false';
+        loadCountAnswer();
+        updateClearButtonVisibility(task);
+    } catch (error) {
+        saveBtn.value = 'Ошибка — повторить';
+        saveBtn.classList.remove('saved');
+        alert(error.message);
+    } finally {
+        saveBtn.disabled = false;
+    }
 }
 
 function setSavedFlag(task) {
-    saveBtn = task.querySelector('.save-btn');
+    const saveBtn = task.querySelector('.save-btn');
     saveBtn.classList.add('saved');
     saveBtn.value = 'Сохранено'
 }
 
 function rmSavedFlag(task) {
-    saveBtn = task.querySelector('.save-btn');
+    const saveBtn = task.querySelector('.save-btn');
     saveBtn.classList.remove('saved');
     saveBtn.value = 'Сохранить'
 }
@@ -171,6 +139,8 @@ function clearAnswer(task) {
         input.value = '';
     });
     updateClearButtonVisibility(task);
+    rmSavedFlag(task);
+    task.dataset.dirty = 'true';
 }
 
 function updateClearButtonVisibility(task) {
@@ -202,6 +172,8 @@ function setupAnswerInputs() {
         answerInput.forEach(input => {
             input.addEventListener('input', () => {
                 updateClearButtonVisibility(task);
+                rmSavedFlag(task);
+                task.dataset.dirty = 'true';
             });
 
             // Блокируем стрелки клавиатуры для полей типа number
@@ -226,9 +198,6 @@ window.onload = function () {
     const firstTask = document.querySelector('.task-box');
     if (firstTask) {
         showTask("i");
-        // Загружаем ответы для первой задачи
-        const firstTaskNumber = firstTask.querySelector('.task-number').innerText;
-        loadAnswersForTask(firstTask, firstTaskNumber);
     }
 };
 
@@ -242,10 +211,6 @@ function showTask(taskNumber) {
     const taskBox = document.getElementById('taskBox-' + taskNumber);
     if (taskBox) {
         taskBox.style.display = 'block';
-        // Загружаем ответы для этой задачи
-        if (taskNumber !== 'i')
-            loadAnswersForTask(taskBox, taskNumber);
-
         // Обновляем текущий индекс
         currentTaskIndex = taskNumbers.indexOf(taskNumber);
 
@@ -256,46 +221,6 @@ function showTask(taskNumber) {
         updateActiveTaskButton(taskNumber);
         updateNavigationButtons();
     }
-}
-
-function loadAnswersForTask(taskBox, taskNumber) {
-    // Получаем taskID из элемента
-    const taskID = taskBox.querySelector('.task-id').innerText;
-
-    // Отправляем запрос для получения ответа
-    const formData = new FormData();
-    formData.append('taskID', taskID);
-    formData.append('number', taskNumber);
-    formData.append('action', 'load');
-
-    fetch('saveAnswer.php', {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success' && data.answer) {
-                // Загружаем ответ в поля ввода
-                const answerInputs = taskBox.querySelectorAll('.answer-input');
-
-                if (answerInputs.length === 1) {
-                    // Обычное поле ввода
-                    answerInputs[0].value = data.answer;
-                } else if (answerInputs.length > 1) {
-                    // Табличные поля - разбиваем по точке с запятой
-                    const answers = data.answer.split(';');
-                    answerInputs.forEach((input, index) => {
-                        input.value = answers[index] || '';
-                    });
-                }
-
-                // Обновляем видимость кнопки очистки
-                updateClearButtonVisibility(taskBox);
-            }
-        })
-        .catch(error => {
-            console.log('Ответ не найден или ошибка загрузки:', error);
-        });
 }
 
 let currentTaskIndex = 0;
@@ -469,3 +394,12 @@ function decreaseAnswersCount() {
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
+window.addEventListener('beforeunload', event => {
+    const hasDirtyAnswers = Array.from(document.querySelectorAll('.task-box'))
+        .some(task => task.dataset.dirty === 'true');
+    if (hasDirtyAnswers) {
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});

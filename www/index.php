@@ -11,7 +11,7 @@ function loadXmlFile($filename)
     }
 
     libxml_use_internal_errors(true);
-    $xml = simplexml_load_string($content);
+    $xml = simplexml_load_string($content, 'SimpleXMLElement', LIBXML_NONET);
     if ($xml === false) {
         return new SimpleXMLElement('<?xml version="1.0"?><empty></empty>');
     }
@@ -19,12 +19,113 @@ function loadXmlFile($filename)
     return $xml;
 }
 
+function ensureAnswerSession($filename, $variantId) {
+    $handle = fopen($filename, 'c+');
+    if ($handle === false || !flock($handle, LOCK_EX)) {
+        return 0;
+    }
+    rewind($handle);
+    $content = stream_get_contents($handle);
+    $document = new DOMDocument('1.0', 'UTF-8');
+    $document->formatOutput = true;
+    $changed = false;
+    if (trim($content) === '') {
+        $root = $document->appendChild($document->createElement('answers'));
+        $root->setAttribute('variant_id', $variantId);
+        $root->setAttribute('kind', 'student');
+        $root->setAttribute('started_at', (string)time());
+        $changed = true;
+    } elseif ($document->loadXML($content, LIBXML_NONET)) {
+        $root = $document->documentElement;
+        if ($root->getAttribute('variant_id') === $variantId && $root->getAttribute('kind') === 'student' && $root->getAttribute('started_at') === '') {
+            $root->setAttribute('started_at', (string)time());
+            $changed = true;
+        }
+    }
+    if ($changed) {
+        $serialized = $document->saveXML();
+        rewind($handle);
+        ftruncate($handle, 0);
+        fwrite($handle, $serialized);
+        fflush($handle);
+    }
+    $startedAt = isset($root) ? (int)$root->getAttribute('started_at') : 0;
+    flock($handle, LOCK_UN);
+    fclose($handle);
+    return $startedAt;
+}
+
+function sanitizeTaskHtml($html) {
+    $html = preg_replace('#<(script|iframe|object|embed|link|meta)\b[^>]*>.*?</\1\s*>#is', '', $html);
+    $html = preg_replace('#<(script|iframe|object|embed|link|meta)\b[^>]*/?>#is', '', $html);
+    $html = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+    $html = preg_replace('/\s+(href|src)\s*=\s*(["\'])\s*(?:javascript|vbscript):.*?\2/i', '', $html);
+    return $html;
+}
+
 $manifest = loadXmlFile(__DIR__ . '/variant/manifest.xml');
 $variantId = (string)$manifest->id;
 $variantTitle = (string)$manifest->title;
 $durationMinutes = max(1, (int)$manifest->duration_minutes);
 $tasks = loadXmlFile(__DIR__ . '/variant/tasks.xml');
+$startedAt = ensureAnswerSession(__DIR__ . '/variant/answers.xml', $variantId);
 $answers = loadXmlFile(__DIR__ . '/variant/answers.xml');
+
+$startupErrors = [];
+if ($startedAt <= 0) {
+    $startupErrors[] = 'Не удалось создать или обновить answers.xml. Проверьте права записи в папку variant';
+}
+if ((string)$manifest['format_version'] !== '2' || $variantId === '') {
+    $startupErrors[] = 'manifest.xml отсутствует или имеет неподдерживаемый формат';
+}
+if (is_file(__DIR__ . '/variant/answer_key.xml')) {
+    $startupErrors[] = 'В ученической сборке обнаружен answer_key.xml. Удалите ключ ответов перед запуском';
+}
+if ((string)$tasks['variant_id'] !== $variantId) {
+    $startupErrors[] = 'tasks.xml относится к другому варианту';
+}
+
+$taskIds = [];
+$taskNumbers = [];
+foreach ($tasks->task as $task) {
+    $taskId = (string)$task->id;
+    $taskNumber = (int)$task->number;
+    if ($taskId === '' || isset($taskIds[$taskId])) {
+        $startupErrors[] = 'Обнаружен пустой или повторяющийся task_id';
+    }
+    if ($taskNumber < 1 || isset($taskNumbers[$taskNumber])) {
+        $startupErrors[] = 'Обнаружен некорректный или повторяющийся номер задания';
+    }
+    $taskIds[$taskId] = $taskNumber;
+    $taskNumbers[$taskNumber] = true;
+    if (isset($task->attachments)) {
+        foreach ($task->attachments->file as $file) {
+            $fileName = basename((string)$file);
+            if ($fileName === '' || !is_file(__DIR__ . '/variant/files/' . $fileName)) {
+                $startupErrors[] = "Не найдено вложение задания $taskNumber: $fileName";
+            }
+        }
+    }
+}
+if ((int)$manifest->task_count !== count($taskIds)) {
+    $startupErrors[] = 'Количество заданий не совпадает с manifest.xml';
+}
+if ($answers->getName() === 'answers') {
+    if ((string)$answers['variant_id'] !== $variantId || (string)$answers['kind'] !== 'student') {
+        $startupErrors[] = 'answers.xml относится к другому варианту или имеет неверный тип';
+    }
+}
+
+if ($startupErrors) {
+    http_response_code(500);
+    echo '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Ошибка варианта</title>';
+    echo '<body style="font:18px sans-serif;padding:30px"><h1>Вариант не может быть запущен</h1><ul>';
+    foreach (array_unique($startupErrors) as $error) {
+        echo '<li>' . htmlspecialchars($error) . '</li>';
+    }
+    echo '</ul></body></html>';
+    exit;
+}
 
 $tasksArray = [];
 foreach ($tasks->task as $task) {
@@ -36,7 +137,7 @@ usort($tasksArray, function ($a, $b) {
 
 $answersMap = [];
 foreach ($answers->answer as $answer) {
-    $answersMap[(int) $answer->number] = (string) $answer->value;
+    $answersMap[(string)$answer['task_id']] = (string)$answer->value;
 }
 ?>
 
@@ -104,7 +205,7 @@ foreach ($answers->answer as $answer) {
                     <div class="task-html">
                         <?php
                         // Получаем содержимое HTML тега
-                        $htmlContent = (string)$task->html;
+                        $htmlContent = sanitizeTaskHtml((string)$task->html);
 
                         // SimpleXML уже декодирует единственный уровень XML-сущностей.
 
@@ -188,8 +289,9 @@ foreach ($answers->answer as $answer) {
 
                         // Получаем сохраненные ответы для этого задания
                         $savedAnswers = [];
-                        if (isset($answersMap[(int) $task->number])) {
-                            $savedAnswers = explode(';', $answersMap[(int) $task->number]);
+                        $taskId = (string)$task->id;
+                        if (isset($answersMap[$taskId])) {
+                            $savedAnswers = explode(';', $answersMap[$taskId]);
                         }
 
                         echo '<table class="answer-table">';
@@ -207,7 +309,7 @@ foreach ($answers->answer as $answer) {
                         ?>
                     <?php else: ?>
                         <input type="<?= ($task->answer_type == 'number') ? 'number' : 'text' ?>" class="answer-input"
-                            value="<?= isset($answersMap[(int) $task->number]) ? htmlspecialchars($answersMap[(int) $task->number]) : '' ?>">
+                            value="<?= isset($answersMap[(string)$task->id]) ? htmlspecialchars($answersMap[(string)$task->id]) : '' ?>">
 
                     <?php endif; ?>
                     <input type="button" class="clear-button" style="display: none;" value="X">
@@ -220,6 +322,7 @@ foreach ($answers->answer as $answer) {
         window.examConfig = <?= json_encode([
             'variantId' => $variantId,
             'durationSeconds' => $durationMinutes * 60,
+            'startedAtMs' => $startedAt * 1000,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     </script>
     <script src="script.js"></script>

@@ -134,7 +134,10 @@ if ($answers->getName() === 'answers') {
 }
 
 if ($startupErrors) {
-    http_response_code(500);
+    // phpDesktop/Mongoose replaces CGI responses with status 500 by its own
+    // generic "malformed or too big headers" page. Keep a successful HTTP
+    // status so the user can see the actual local validation errors below.
+    http_response_code(200);
     echo '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Ошибка варианта</title>';
     echo '<body style="font:18px sans-serif;padding:30px"><h1>Вариант не может быть запущен</h1><ul>';
     foreach (array_unique($startupErrors) as $error) {

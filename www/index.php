@@ -19,6 +19,10 @@ function loadXmlFile($filename)
     return $xml;
 }
 
+$manifest = loadXmlFile(__DIR__ . '/variant/manifest.xml');
+$variantId = (string)$manifest->id;
+$variantTitle = (string)$manifest->title;
+$durationMinutes = max(1, (int)$manifest->duration_minutes);
 $tasks = loadXmlFile(__DIR__ . '/variant/tasks.xml');
 $answers = loadXmlFile(__DIR__ . '/variant/answers.xml');
 
@@ -41,7 +45,7 @@ foreach ($answers->answer as $answer) {
 <html>
 
 <head>
-    <title>Тест ЕГЭ</title>
+    <title><?= htmlspecialchars($variantTitle ?: 'Тест ЕГЭ') ?></title>
     <meta charset="utf-8">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -111,7 +115,7 @@ foreach ($answers->answer as $answer) {
                                 function ($matches) {
                                     $src = trim($matches[1]);
                                     return '<div class="task-image">'
-                                        . '<img src="variant/' . $src . '" alt="Иллюстрация к задаче">'
+                                        . '<img src="variant/files/' . $src . '" alt="Иллюстрация к задаче">'
                                         . '</div>';
                                 },
                                 $htmlContent
@@ -125,8 +129,8 @@ foreach ($answers->answer as $answer) {
                                 $src = trim($matches[1]);
                                 if (!preg_match('#^(?:[a-z][a-z0-9+.-]*:|//)#i', $src)) {
                                     $src = ltrim($src, '/');
-                                    if (strpos($src, 'variant/') !== 0) {
-                                        $src = 'variant/' . $src;
+                                    if (strpos($src, 'variant/files/') !== 0) {
+                                        $src = 'variant/files/' . basename($src);
                                     }
                                     return str_replace($matches[1], $src, $matches[0]);
                                 }
@@ -160,9 +164,9 @@ foreach ($answers->answer as $answer) {
                 // Обработка дополнительных файлов (может быть несколько)
                 $extraFiles = [];
 
-                foreach ($task->children() as $child) {
-                    if ($child->getName() == 'extra_file') {
-                        $extraFiles[] = (string) $child;
+                if (isset($task->attachments)) {
+                    foreach ($task->attachments->file as $file) {
+                        $extraFiles[] = (string)$file;
                     }
                 }
 
@@ -212,6 +216,12 @@ foreach ($answers->answer as $answer) {
             </div>
         <?php endforeach; ?>
     </div>
+    <script>
+        window.examConfig = <?= json_encode([
+            'variantId' => $variantId,
+            'durationSeconds' => $durationMinutes * 60,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    </script>
     <script src="script.js"></script>
 </body>
 

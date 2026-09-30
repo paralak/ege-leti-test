@@ -1,6 +1,6 @@
 <?php
 
-$variantDir = realpath(__DIR__ . '/variant');
+$variantDir = realpath(__DIR__ . '/variant/files');
 $requestedName = isset($_GET['file']) ? basename(str_replace('\\', '/', $_GET['file'])) : '';
 
 if ($variantDir === false || $requestedName === '') {

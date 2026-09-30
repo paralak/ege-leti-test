@@ -28,15 +28,21 @@ function loadCountAnswer() {
 
 function initTimer() {
     // Таймер на 3 часа 50 минут
-    let totalSeconds = 3 * 3600 + 50 * 60;
+    const totalSeconds = Number(window.examConfig?.durationSeconds) || 235 * 60;
+    const variantId = window.examConfig?.variantId || 'unknown-variant';
+    const timerStorageKey = 'examStartTime:' + variantId;
     const timerElem = document.getElementById('timer');
 
-    let startTime = localStorage.getItem('examStartTime');
+    let startTime = localStorage.getItem(timerStorageKey);
     if (!startTime) {
         startTime = Date.now();
-        localStorage.setItem('examStartTime', startTime);
+        localStorage.setItem(timerStorageKey, startTime);
     } else {
-        startTime = parseInt(startTime);
+        startTime = parseInt(startTime, 10);
+        if (!Number.isFinite(startTime) || startTime > Date.now()) {
+            startTime = Date.now();
+            localStorage.setItem(timerStorageKey, startTime);
+        }
     }
 
     function updateTimer() {

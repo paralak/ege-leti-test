@@ -1,5 +1,6 @@
 <?php
 header('Content-Type: application/json; charset=UTF-8');
+require_once __DIR__ . '/answer_store.php';
 
 function respond($payload, $status = 200) {
     http_response_code($status);
@@ -37,94 +38,54 @@ if (!$validTask) {
     respond(['status' => 'error', 'message' => 'Задание не найдено в текущем варианте'], 404);
 }
 
-$xmlFile = __DIR__ . '/variant/answers.xml';
-$handle = fopen($xmlFile, 'c+');
-if ($handle === false || !flock($handle, LOCK_EX)) {
-    respond(['status' => 'error', 'message' => 'Не удалось заблокировать файл ответов'], 500);
-}
+try {
+    $result = withAnswersLock(function () use ($variantId, $taskId, $number) {
+        $xmlFile = __DIR__ . '/variant/answers.xml';
+        $document = new DOMDocument('1.0', 'UTF-8');
+        $document->formatOutput = true;
+        if (!is_file($xmlFile) || filesize($xmlFile) === 0) {
+            $document = createAnswersDocument($variantId);
+        } elseif (!$document->load($xmlFile, LIBXML_NONET)) {
+            throw new RuntimeException('Файл ответов повреждён');
+        }
+        $root = $document->documentElement;
+        if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
+            throw new RuntimeException('Файл ответов относится к другому варианту');
+        }
 
-rewind($handle);
-$content = stream_get_contents($handle);
-$document = new DOMDocument('1.0', 'UTF-8');
-$document->formatOutput = true;
+        $existing = null;
+        foreach ($root->getElementsByTagName('answer') as $answer) {
+            if ($answer->getAttribute('task_id') === $taskId) {
+                $existing = $answer;
+                break;
+            }
+        }
 
-if (trim($content) === '') {
-    $root = $document->appendChild($document->createElement('answers'));
-    $root->setAttribute('variant_id', $variantId);
-    $root->setAttribute('kind', 'student');
-} elseif (!$document->loadXML($content, LIBXML_NONET)) {
-    flock($handle, LOCK_UN);
-    fclose($handle);
-    respond(['status' => 'error', 'message' => 'Файл ответов повреждён'], 500);
-} else {
-    $root = $document->documentElement;
-    if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
-        flock($handle, LOCK_UN);
-        fclose($handle);
-        respond(['status' => 'error', 'message' => 'Файл ответов относится к другому варианту'], 409);
-    }
-}
+        $hadAnswer = false;
+        if ($existing !== null) {
+            $existingValues = $existing->getElementsByTagName('value');
+            $hadAnswer = $existingValues->length > 0 && trim($existingValues->item(0)->textContent) !== '';
+            $root->removeChild($existing);
+        }
 
-$existing = null;
-foreach ($root->getElementsByTagName('answer') as $answer) {
-    if ($answer->getAttribute('task_id') === $taskId) {
-        $existing = $answer;
-        break;
-    }
-}
+        $newValue = trim((string)($_POST['answer'] ?? ''));
+        if ($newValue !== '') {
+            $answer = $root->appendChild($document->createElement('answer'));
+            $answer->setAttribute('task_id', $taskId);
+            $answer->setAttribute('number', (string)$number);
+            $value = $answer->appendChild($document->createElement('value'));
+            $value->appendChild($document->createTextNode($newValue));
+        }
 
-if (($_POST['action'] ?? 'save') === 'load') {
-    $value = '';
-    if ($existing !== null) {
-        $nodes = $existing->getElementsByTagName('value');
-        $value = $nodes->length ? $nodes->item(0)->textContent : '';
-    }
-    flock($handle, LOCK_UN);
-    fclose($handle);
-    respond(['status' => 'success', 'answer' => $value]);
+        atomicWriteAnswers($xmlFile, $document);
+        return [
+            'status' => 'success',
+            'message' => 'Ответ сохранён',
+            'hadAnswer' => $hadAnswer,
+            'hasAnswer' => $newValue !== '',
+        ];
+    });
+} catch (Throwable $error) {
+    respond(['status' => 'error', 'message' => $error->getMessage()], 500);
 }
-
-$hadAnswer = false;
-if ($existing !== null) {
-    $existingValues = $existing->getElementsByTagName('value');
-    $hadAnswer = $existingValues->length > 0 && trim($existingValues->item(0)->textContent) !== '';
-}
-if ($existing !== null) {
-    $root->removeChild($existing);
-}
-
-$newValue = trim((string)($_POST['answer'] ?? ''));
-if ($newValue !== '') {
-    $answer = $root->appendChild($document->createElement('answer'));
-    $answer->setAttribute('task_id', $taskId);
-    $answer->setAttribute('number', (string)$number);
-    $value = $answer->appendChild($document->createElement('value'));
-    $value->appendChild($document->createTextNode($newValue));
-}
-
-$serialized = $document->saveXML();
-rewind($handle);
-ftruncate($handle, 0);
-$written = 0;
-$length = strlen($serialized);
-while ($written < $length) {
-    $chunk = fwrite($handle, substr($serialized, $written));
-    if ($chunk === false || $chunk === 0) {
-        break;
-    }
-    $written += $chunk;
-}
-fflush($handle);
-flock($handle, LOCK_UN);
-fclose($handle);
-
-if ($written !== $length) {
-    respond(['status' => 'error', 'message' => 'Не удалось полностью сохранить ответы'], 500);
-}
-
-respond([
-    'status' => 'success',
-    'message' => 'Ответ сохранён',
-    'hadAnswer' => $hadAnswer,
-    'hasAnswer' => $newValue !== '',
-]);
+respond($result);

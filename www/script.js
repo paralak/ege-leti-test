@@ -1,3 +1,5 @@
+let examExpired = false;
+
 function initApp() {
     setupSaveBtn();
     setupClrBtn();
@@ -6,6 +8,7 @@ function initApp() {
     initNavigation();
     loadCountAnswer();
     loadDoneBtnTasks();
+    setupResetAttempt();
 }
 
 function loadDoneBtnTasks() {
@@ -31,13 +34,14 @@ function initTimer() {
     const totalSeconds = Number(window.examConfig?.durationSeconds) || 235 * 60;
     const timerElem = document.getElementById('timer');
     const configuredStart = Number(window.examConfig?.startedAtMs);
-    const startTime = Number.isFinite(configuredStart) && configuredStart > 0
-        ? configuredStart
-        : Date.now();
+    const serverNow = Number(window.examConfig?.serverNowMs) || Date.now();
+    const elapsedBeforeLoad = Number.isFinite(configuredStart) && configuredStart > 0
+        ? Math.max(0, (serverNow - configuredStart) / 1000)
+        : 0;
+    const monotonicStart = performance.now();
 
     function updateTimer() {
-        const curTime = Date.now();
-        const elapsedTime = Math.floor(curTime - startTime) / 1000
+        const elapsedTime = elapsedBeforeLoad + (performance.now() - monotonicStart) / 1000;
         const remainTime = Math.max(0, totalSeconds - elapsedTime);
 
         let hours = Math.floor(remainTime / 3600);
@@ -54,6 +58,7 @@ function initTimer() {
         if (remaining === 0) {
             timerElem.textContent = "Время вышло!";
             clearInterval(timerInterval);
+            examExpired = true;
             finishExam();
         }
     }, 1000);
@@ -63,19 +68,29 @@ function initTimer() {
 async function finishExam() {
     const dirtyTasks = Array.from(document.querySelectorAll('.task-box:not(.task-i)'))
         .filter(task => task.dataset.dirty === 'true');
-    await Promise.allSettled(dirtyTasks.map(task => saveAnswer(task)));
-    document.querySelectorAll('.answer-input, .save-btn, .clear-button').forEach(control => {
+    const results = await Promise.allSettled(dirtyTasks.map(task => saveAnswer(task, true)));
+    const failed = results.filter(result => result.status === 'rejected');
+    if (failed.length > 0) {
+        alert(`Не удалось сохранить ответов: ${failed.length}. Проверьте доступ к папке variant и повторите сохранение.`);
+        return false;
+    }
+    lockExamControls();
+    return true;
+}
+
+function lockExamControls() {
+    document.querySelectorAll('.answer-input, .save-btn, .clear-button, #resetExamBtn').forEach(control => {
         control.disabled = true;
     });
 }
 
 function setupSaveBtn() {
     document.querySelectorAll('.task-box').forEach(item => {
-        item.querySelector('.save-btn').addEventListener('click', () => { saveAnswer(item) });
+        item.querySelector('.save-btn').addEventListener('click', () => { saveAnswer(item).catch(() => {}); });
     });
 }
 
-async function saveAnswer(task) {
+async function saveAnswer(task, silent = false) {
     const number = task.querySelector('.task-number').innerText;
     const taskID = task.querySelector('.task-id').innerText;
     const answerInputs = task.querySelectorAll('.answer-input');
@@ -105,13 +120,39 @@ async function saveAnswer(task) {
         task.dataset.dirty = 'false';
         loadCountAnswer();
         updateClearButtonVisibility(task);
+        if (examExpired && !document.querySelector('.task-box[data-dirty="true"]')) {
+            lockExamControls();
+        }
     } catch (error) {
         saveBtn.value = 'Ошибка — повторить';
         saveBtn.classList.remove('saved');
-        alert(error.message);
+        if (!silent) alert(error.message);
+        throw error;
     } finally {
         saveBtn.disabled = false;
     }
+}
+
+function setupResetAttempt() {
+    const button = document.getElementById('resetExamBtn');
+    if (!button) return;
+    button.addEventListener('click', async () => {
+        if (!confirm('Удалить все ответы и запустить таймер заново? Отменить это действие нельзя.')) return;
+        button.disabled = true;
+        try {
+            const body = new FormData();
+            body.append('confirm', 'RESET');
+            const response = await fetch('resetAttempt.php', { method: 'POST', body });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data.message || 'Не удалось начать новую попытку');
+            }
+            location.reload();
+        } catch (error) {
+            alert(error.message);
+            button.disabled = false;
+        }
+    });
 }
 
 function setSavedFlag(task) {

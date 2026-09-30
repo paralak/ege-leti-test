@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/answer_store.php';
 function loadXmlFile($filename)
 {
     if (!file_exists($filename)) {
@@ -20,39 +21,30 @@ function loadXmlFile($filename)
 }
 
 function ensureAnswerSession($filename, $variantId) {
-    $handle = fopen($filename, 'c+');
-    if ($handle === false || !flock($handle, LOCK_EX)) {
+    try {
+        return withAnswersLock(function () use ($filename, $variantId) {
+            if (!is_file($filename) || filesize($filename) === 0) {
+                $document = createAnswersDocument($variantId);
+                atomicWriteAnswers($filename, $document);
+                return (int)$document->documentElement->getAttribute('started_at');
+            }
+            $document = new DOMDocument('1.0', 'UTF-8');
+            if (!$document->load($filename, LIBXML_NONET)) {
+                return 0;
+            }
+            $root = $document->documentElement;
+            if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
+                return 0;
+            }
+            if ($root->getAttribute('started_at') === '') {
+                $root->setAttribute('started_at', (string)time());
+                atomicWriteAnswers($filename, $document);
+            }
+            return (int)$root->getAttribute('started_at');
+        });
+    } catch (Throwable $error) {
         return 0;
     }
-    rewind($handle);
-    $content = stream_get_contents($handle);
-    $document = new DOMDocument('1.0', 'UTF-8');
-    $document->formatOutput = true;
-    $changed = false;
-    if (trim($content) === '') {
-        $root = $document->appendChild($document->createElement('answers'));
-        $root->setAttribute('variant_id', $variantId);
-        $root->setAttribute('kind', 'student');
-        $root->setAttribute('started_at', (string)time());
-        $changed = true;
-    } elseif ($document->loadXML($content, LIBXML_NONET)) {
-        $root = $document->documentElement;
-        if ($root->getAttribute('variant_id') === $variantId && $root->getAttribute('kind') === 'student' && $root->getAttribute('started_at') === '') {
-            $root->setAttribute('started_at', (string)time());
-            $changed = true;
-        }
-    }
-    if ($changed) {
-        $serialized = $document->saveXML();
-        rewind($handle);
-        ftruncate($handle, 0);
-        fwrite($handle, $serialized);
-        fflush($handle);
-    }
-    $startedAt = isset($root) ? (int)$root->getAttribute('started_at') : 0;
-    flock($handle, LOCK_UN);
-    fclose($handle);
-    return $startedAt;
 }
 
 function sanitizeTaskHtml($html) {
@@ -113,6 +105,19 @@ if ((int)$manifest->task_count !== count($taskIds)) {
 if ($answers->getName() === 'answers') {
     if ((string)$answers['variant_id'] !== $variantId || (string)$answers['kind'] !== 'student') {
         $startupErrors[] = 'answers.xml относится к другому варианту или имеет неверный тип';
+    }
+    $seenAnswerIds = [];
+    foreach ($answers->answer as $answer) {
+        $answerId = (string)$answer['task_id'];
+        $answerNumber = (int)$answer['number'];
+        if ($answerId === '' || isset($seenAnswerIds[$answerId])) {
+            $startupErrors[] = 'В answers.xml обнаружен пустой или повторяющийся task_id';
+            continue;
+        }
+        $seenAnswerIds[$answerId] = true;
+        if (!isset($taskIds[$answerId]) || $taskIds[$answerId] !== $answerNumber) {
+            $startupErrors[] = 'В answers.xml обнаружен ответ на неизвестное задание';
+        }
     }
 }
 
@@ -175,6 +180,7 @@ foreach ($answers->answer as $answer) {
             </div>
 
             <button type="button" class="scroll-btn" id="scrollDownBtn" onclick="scrollTasks(1)" aria-label="Прокрутить задания вниз">↓</button>
+            <button type="button" class="reset-exam-btn" id="resetExamBtn">Новая попытка</button>
         </div>
     </div>
     <div class="wrapper" id="tasksWrapper">
@@ -323,6 +329,7 @@ foreach ($answers->answer as $answer) {
             'variantId' => $variantId,
             'durationSeconds' => $durationMinutes * 60,
             'startedAtMs' => $startedAt * 1000,
+            'serverNowMs' => time() * 1000,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     </script>
     <script src="script.js"></script>

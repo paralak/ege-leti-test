@@ -97,12 +97,22 @@ body {
     overflow-y: auto;
     overscroll-behavior: contain;
     scroll-behavior: smooth;
+    scrollbar-gutter: stable both-edges;
     scrollbar-width: thin;
     scrollbar-color: #8ea1c2 transparent;
     flex-direction: column;
     align-items: center;
     padding: 2px 0;
     box-sizing: border-box;
+}
+
+.tasks-grid::-webkit-scrollbar {
+    width: 8px;
+}
+
+.tasks-grid::-webkit-scrollbar-thumb {
+    background: #8ea1c2;
+    border-radius: 4px;
 }
 
 .task-btn {

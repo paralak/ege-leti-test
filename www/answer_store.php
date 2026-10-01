@@ -100,39 +100,25 @@ function answersCopyFilename(DOMDocument $document) {
 }
 
 function runOptionalAnswersCopy($answersFilename, $targetFilename) {
-    if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
-        return;
-    }
-
     $batchFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'copy_answers.bat';
     if (!is_file($batchFile) || !is_file($answersFilename)) {
         return;
     }
 
-    // Без /B: дочерний cmd получает собственные дескрипторы и CGI не ждёт xcopy.
-    $command = 'cmd.exe /D /C start "" /MIN '
-        . escapeshellarg($batchFile) . ' '
-        . escapeshellarg($answersFilename)
-        . ' ' . escapeshellarg($targetFilename)
-        . ' >NUL 2>&1';
-    if (function_exists('exec')) {
-        $output = [];
-        $exitCode = 0;
-        @exec($command, $output, $exitCode);
+    $batchContents = @file_get_contents($batchFile);
+    if ($batchContents === false
+        || !preg_match('/^\s*set\s+"DESTINATION=([^"\r\n]*)"\s*$/mi', $batchContents, $matches)) {
         return;
     }
 
-    if (function_exists('shell_exec')) {
-        @shell_exec($command);
+    $destination = trim($matches[1]);
+    if ($destination === '') {
         return;
     }
 
-    if (function_exists('popen')) {
-        $process = @popen($command, 'r');
-        if (is_resource($process)) {
-            @pclose($process);
-        }
-    }
+    $targetPath = rtrim($destination, "\\/ \t\r\n")
+        . DIRECTORY_SEPARATOR . basename($targetFilename);
+    @copy($answersFilename, $targetPath);
 }
 
 function recoverAnswersIfNeeded($filename, $variantId) {

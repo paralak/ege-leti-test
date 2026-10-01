@@ -69,12 +69,37 @@ function atomicWriteAnswers($filename, DOMDocument $document) {
         if ($hadOriginal) {
             @unlink($backup);
         }
+        try {
+            runOptionalAnswersCopy($filename);
+        } catch (Throwable $ignored) {
+            // Резервное копирование необязательно и не должно мешать сохранению ответа.
+        }
     } catch (Throwable $error) {
         @unlink($temporary);
         if (!is_file($filename) && is_file($backup)) {
             @rename($backup, $filename);
         }
         throw $error;
+    }
+}
+
+function runOptionalAnswersCopy($answersFilename) {
+    if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN' || !function_exists('popen')) {
+        return;
+    }
+
+    $batchFile = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'copy_answers.bat';
+    if (!is_file($batchFile) || !is_file($answersFilename)) {
+        return;
+    }
+
+    $command = 'start "" /B '
+        . escapeshellarg($batchFile) . ' '
+        . escapeshellarg($answersFilename)
+        . ' >NUL 2>&1';
+    $process = @popen($command, 'r');
+    if (is_resource($process)) {
+        @pclose($process);
     }
 }
 

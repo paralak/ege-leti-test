@@ -39,7 +39,7 @@ function ensureAnswerSession($filename, $variantId) {
                 archiveAnswersFile($filename, 'previous');
                 return 0;
             }
-            if (!preg_match('/^\d{1,32}$/D', $root->getAttribute('kim_number'))) {
+            if (trim($root->getAttribute('kim_number')) === '') {
                 archiveAnswersFile($filename, 'unassigned');
                 return 0;
             }

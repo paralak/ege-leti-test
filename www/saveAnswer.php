@@ -54,7 +54,7 @@ try {
         if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
             throw new RuntimeException('Файл ответов относится к другому варианту');
         }
-        if (!preg_match('/^\d{1,32}$/D', $root->getAttribute('kim_number'))) {
+        if (trim($root->getAttribute('kim_number')) === '') {
             throw new RuntimeException('В попытке отсутствует корректный номер КИМ');
         }
         $startedAt = (int)$root->getAttribute('started_at');

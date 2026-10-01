@@ -39,7 +39,7 @@ if ($variantId === '') {
                 archiveAnswersFile($filename, 'previous');
                 return false;
             }
-            if (!preg_match('/^\d{1,32}$/D', $kimNumber) || $startedAt <= 0) {
+            if (trim($kimNumber) === '' || $startedAt <= 0) {
                 archiveAnswersFile($filename, 'unassigned');
                 return false;
             }
@@ -61,8 +61,8 @@ if ($variantId === '') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
     $kimNumber = trim((string)($_POST['kim_number'] ?? ''));
-    if (!preg_match('/^\d{1,32}$/D', $kimNumber)) {
-        $error = 'Введите номер КИМ: от 1 до 32 цифр без пробелов.';
+    if ($kimNumber === '') {
+        $error = 'Введите номер КИМ.';
     } else {
         try {
             withAnswersLock(function () use ($variantId, $kimNumber) {
@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
     <?php if ($variantId !== ''): ?>
         <form method="post" autocomplete="off">
             <label for="kim_number">Номер КИМ</label>
-            <input id="kim_number" name="kim_number" type="text" inputmode="numeric" pattern="[0-9]+" maxlength="32" required autofocus value="<?= htmlspecialchars((string)($_POST['kim_number'] ?? '')) ?>">
+            <input id="kim_number" name="kim_number" type="text" required autofocus value="<?= htmlspecialchars((string)($_POST['kim_number'] ?? '')) ?>">
             <p class="hint">После нажатия кнопки начнётся отсчёт времени.</p>
             <button type="submit">Начать тест</button>
         </form>

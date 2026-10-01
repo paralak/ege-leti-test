@@ -109,13 +109,16 @@ function recoverAnswersIfNeeded($filename, $variantId) {
     }
 }
 
-function createAnswersDocument($variantId, $startedAt = null) {
+function createAnswersDocument($variantId, $startedAt = null, $kimNumber = '') {
     $document = new DOMDocument('1.0', 'UTF-8');
     $document->formatOutput = true;
     $root = $document->appendChild($document->createElement('answers'));
     $root->setAttribute('variant_id', $variantId);
     $root->setAttribute('kind', 'student');
     $root->setAttribute('started_at', (string)($startedAt ?: time()));
+    if ($kimNumber !== '') {
+        $root->setAttribute('kim_number', $kimNumber);
+    }
     return $document;
 }
 

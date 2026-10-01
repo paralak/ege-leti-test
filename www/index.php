@@ -26,35 +26,27 @@ function ensureAnswerSession($filename, $variantId) {
         return withAnswersLock(function () use ($filename, $variantId) {
             recoverAnswersIfNeeded($filename, $variantId);
             if (!is_file($filename) || filesize($filename) === 0) {
-                $document = createAnswersDocument($variantId);
-                atomicWriteAnswers($filename, $document);
-                return (int)$document->documentElement->getAttribute('started_at');
+                return 0;
             }
             $document = new DOMDocument('1.0', 'UTF-8');
             if (!$document->load($filename, LIBXML_NONET)) {
                 $archive = $filename . '.invalid.' . date('Ymd-His');
                 if (!rename($filename, $archive)) return 0;
-                $document = createAnswersDocument($variantId);
-                atomicWriteAnswers($filename, $document);
-                return (int)$document->documentElement->getAttribute('started_at');
+                return 0;
             }
             $root = $document->documentElement;
             if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
                 archiveAnswersFile($filename, 'previous');
-                $document = createAnswersDocument($variantId);
-                atomicWriteAnswers($filename, $document);
-                return (int)$document->documentElement->getAttribute('started_at');
+                return 0;
             }
-            if ($root->getAttribute('started_at') === '') {
-                $root->setAttribute('started_at', (string)time());
-                atomicWriteAnswers($filename, $document);
+            if (!preg_match('/^\d{1,32}$/D', $root->getAttribute('kim_number'))) {
+                archiveAnswersFile($filename, 'unassigned');
+                return 0;
             }
             $startedAt = (int)$root->getAttribute('started_at');
             if ($startedAt > 0 && time() >= $startedAt + ANSWER_SESSION_RESET_SECONDS) {
                 archiveAnswersFile($filename, 'expired');
-                $document = createAnswersDocument($variantId);
-                atomicWriteAnswers($filename, $document);
-                return (int)$document->documentElement->getAttribute('started_at');
+                return 0;
             }
             return $startedAt;
         });
@@ -77,14 +69,15 @@ $variantTitle = (string)$manifest->title;
 $durationMinutes = max(1, (int)$manifest->duration_minutes);
 $tasks = loadXmlFile(__DIR__ . '/variant/tasks.xml');
 $startedAt = ensureAnswerSession(__DIR__ . '/variant/answers.xml', $variantId);
+if ($startedAt <= 0) {
+    header('Location: start.php');
+    exit;
+}
 $answers = loadXmlFile(__DIR__ . '/variant/answers.xml');
 $serverNow = time();
 $examExpired = $startedAt > 0 && $serverNow >= $startedAt + ($durationMinutes * 60);
 
 $startupErrors = [];
-if ($startedAt <= 0) {
-    $startupErrors[] = 'Не удалось создать или обновить answers.xml. Проверьте права записи в папку variant';
-}
 if ((string)$manifest['format_version'] !== '2' || $variantId === '') {
     $startupErrors[] = 'manifest.xml отсутствует или имеет неподдерживаемый формат';
 }

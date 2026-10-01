@@ -46,13 +46,16 @@ try {
         $document = new DOMDocument('1.0', 'UTF-8');
         $document->formatOutput = true;
         if (!is_file($xmlFile) || filesize($xmlFile) === 0) {
-            $document = createAnswersDocument($variantId);
+            throw new RuntimeException('Попытка не начата. Вернитесь на страницу ввода номера КИМ');
         } elseif (!$document->load($xmlFile, LIBXML_NONET)) {
             throw new RuntimeException('Файл ответов повреждён');
         }
         $root = $document->documentElement;
         if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
             throw new RuntimeException('Файл ответов относится к другому варианту');
+        }
+        if (!preg_match('/^\d{1,32}$/D', $root->getAttribute('kim_number'))) {
+            throw new RuntimeException('В попытке отсутствует корректный номер КИМ');
         }
         $startedAt = (int)$root->getAttribute('started_at');
         if ($startedAt <= 0 || time() > $startedAt + $durationSeconds + 30) {

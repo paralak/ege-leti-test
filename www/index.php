@@ -184,11 +184,11 @@ foreach ($answers->answer as $answer) {
             <button type="button" class="scroll-btn" id="scrollUpBtn" onclick="scrollTasks(-1)" aria-label="Прокрутить задания вверх">↑</button>
 
             <div class="tasks-grid">
-                <button class="task-btn i" onclick="showTask('i')"><p>
+                <button type="button" class="task-btn i" onclick="showTask('i')" aria-label="Инструкция" title="Инструкция"><p>
                     i
                 </p></button>
                 <?php foreach ($tasksArray as $task): ?>
-                    <button class="task-btn <?= $task->number ?>" onclick="showTask(<?= (int) $task->number ?>)"><p>
+                    <button type="button" class="task-btn <?= $task->number ?>" onclick="showTask(<?= (int) $task->number ?>)" aria-label="Задание <?= (int) $task->number ?>" title="Задание <?= (int) $task->number ?>"><p>
                         <?= $task->number ?>
                     </p></button>
                 <?php endforeach; ?>

@@ -311,8 +311,11 @@ function updateActiveTaskButton(taskNumber) {
 
     // Добавляем активный класс к текущей кнопке
     document.querySelectorAll('.task-btn').forEach(btn => {
-        if (parseInt(btn.textContent) === parseInt(taskNumber) || taskNumber === btn.textContent) {
+        const isCurrent = parseInt(btn.textContent) === parseInt(taskNumber) || taskNumber === btn.textContent.trim();
+        btn.removeAttribute('aria-current');
+        if (isCurrent) {
             btn.classList.add('active');
+            btn.setAttribute('aria-current', 'step');
         }
     });
 }

@@ -70,7 +70,7 @@ function atomicWriteAnswers($filename, DOMDocument $document) {
             @unlink($backup);
         }
         try {
-            runOptionalAnswersCopy($filename);
+            runOptionalAnswersCopy($filename, answersCopyFilename($document));
         } catch (Throwable $ignored) {
             // Резервное копирование необязательно и не должно мешать сохранению ответа.
         }
@@ -83,7 +83,23 @@ function atomicWriteAnswers($filename, DOMDocument $document) {
     }
 }
 
-function runOptionalAnswersCopy($answersFilename) {
+function answersCopyFilename(DOMDocument $document) {
+    $root = $document->documentElement;
+    $kimNumber = $root !== null ? trim($root->getAttribute('kim_number')) : '';
+    $safeKim = preg_replace('/[^\p{L}\p{N} ._-]+/u', '_', $kimNumber);
+    $safeKim = trim((string)$safeKim, " .\t\r\n");
+    if ($safeKim === '') {
+        $safeKim = 'unknown';
+    }
+    if (function_exists('mb_substr')) {
+        $safeKim = mb_substr($safeKim, 0, 120, 'UTF-8');
+    } else {
+        $safeKim = substr($safeKim, 0, 120);
+    }
+    return 'answers_' . $safeKim . '.xml';
+}
+
+function runOptionalAnswersCopy($answersFilename, $targetFilename) {
     if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN' || !function_exists('popen')) {
         return;
     }
@@ -96,6 +112,7 @@ function runOptionalAnswersCopy($answersFilename) {
     $command = 'start "" /B '
         . escapeshellarg($batchFile) . ' '
         . escapeshellarg($answersFilename)
+        . ' ' . escapeshellarg($targetFilename)
         . ' >NUL 2>&1';
     $process = @popen($command, 'r');
     if (is_resource($process)) {

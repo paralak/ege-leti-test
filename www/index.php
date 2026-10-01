@@ -40,8 +40,7 @@ function ensureAnswerSession($filename, $variantId) {
             }
             $root = $document->documentElement;
             if ($root->getAttribute('variant_id') !== $variantId || $root->getAttribute('kind') !== 'student') {
-                $archive = $filename . '.previous.' . date('Ymd-His');
-                if (!rename($filename, $archive)) return 0;
+                archiveAnswersFile($filename, 'previous');
                 $document = createAnswersDocument($variantId);
                 atomicWriteAnswers($filename, $document);
                 return (int)$document->documentElement->getAttribute('started_at');
@@ -50,7 +49,14 @@ function ensureAnswerSession($filename, $variantId) {
                 $root->setAttribute('started_at', (string)time());
                 atomicWriteAnswers($filename, $document);
             }
-            return (int)$root->getAttribute('started_at');
+            $startedAt = (int)$root->getAttribute('started_at');
+            if ($startedAt > 0 && time() >= $startedAt + ANSWER_SESSION_RESET_SECONDS) {
+                archiveAnswersFile($filename, 'expired');
+                $document = createAnswersDocument($variantId);
+                atomicWriteAnswers($filename, $document);
+                return (int)$document->documentElement->getAttribute('started_at');
+            }
+            return $startedAt;
         });
     } catch (Throwable $error) {
         return 0;

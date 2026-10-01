@@ -29,7 +29,7 @@ function loadCountAnswer() {
 }
 
 function initTimer() {
-    // Таймер на 3 часа 50 минут
+    // Продолжительность берётся из manifest.xml (для текущего варианта — 235 минут).
     const totalSeconds = Number(window.examConfig?.durationSeconds) || 235 * 60;
     const timerElem = document.getElementById('timer');
     const configuredStart = Number(window.examConfig?.startedAtMs);

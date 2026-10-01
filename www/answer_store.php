@@ -1,5 +1,7 @@
 <?php
 
+const ANSWER_SESSION_RESET_SECONDS = 86400;
+
 function withAnswersLock(callable $callback) {
     $lockFile = __DIR__ . '/variant/.answers.lock';
     $handle = fopen($lockFile, 'c+');
@@ -115,4 +117,13 @@ function createAnswersDocument($variantId, $startedAt = null) {
     $root->setAttribute('kind', 'student');
     $root->setAttribute('started_at', (string)($startedAt ?: time()));
     return $document;
+}
+
+function archiveAnswersFile($filename, $label) {
+    $suffix = date('Ymd-His') . '-' . bin2hex(random_bytes(3));
+    $archive = $filename . '.' . $label . '.' . $suffix;
+    if (!rename($filename, $archive)) {
+        throw new RuntimeException('Не удалось архивировать предыдущую попытку');
+    }
+    return $archive;
 }

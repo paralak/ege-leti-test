@@ -109,7 +109,8 @@ function runOptionalAnswersCopy($answersFilename, $targetFilename) {
         return;
     }
 
-    $command = 'start "" /B '
+    // Без /B: дочерний cmd получает собственные дескрипторы и CGI не ждёт xcopy.
+    $command = 'cmd.exe /D /C start "" /MIN '
         . escapeshellarg($batchFile) . ' '
         . escapeshellarg($answersFilename)
         . ' ' . escapeshellarg($targetFilename)

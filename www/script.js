@@ -109,8 +109,14 @@ async function saveAnswer(task, silent = false) {
 
     saveBtn.disabled = true;
     saveBtn.value = 'Сохраняется…';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
     try {
-        const response = await fetch('saveAnswer.php', { method: 'POST', body: formData });
+        const response = await fetch('saveAnswer.php', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        });
         const data = await response.json();
         if (!response.ok || data.status !== 'success') {
             throw new Error(data.message || 'Не удалось сохранить ответ');
@@ -132,9 +138,13 @@ async function saveAnswer(task, silent = false) {
     } catch (error) {
         saveBtn.value = 'Ошибка — повторить';
         saveBtn.classList.remove('saved');
-        if (!silent) alert(error.message);
+        const message = error.name === 'AbortError'
+            ? 'Сохранение не завершилось за 20 секунд. Локальный файл мог сохраниться; повторите попытку.'
+            : error.message;
+        if (!silent) alert(message);
         throw error;
     } finally {
+        clearTimeout(timeoutId);
         saveBtn.disabled = false;
     }
 }

@@ -219,6 +219,62 @@ body {
     line-height:2;
 }
 
+.task-html {
+    line-height: 1.55;
+}
+
+.task-html p {
+    margin: 0.8em 0;
+}
+
+.task-html ol {
+    margin: 0.8em 0;
+    padding-left: 2em;
+}
+
+.task-html li {
+    margin: 0.35em 0;
+    padding-left: 0.25em;
+}
+
+.task-html .letter-list {
+    margin: 0.5em 0 0.5em 1.5em;
+    padding: 0;
+    list-style: none;
+}
+
+.task-html .command-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.4em 0.7em;
+    margin: 0.8em 0 0.8em 1.5em;
+}
+
+.task-html .command-list dt {
+    font-weight: 700;
+}
+
+.task-html .command-list dd {
+    margin: 0;
+}
+
+.task-html pre {
+    max-width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+    margin: 1em 0;
+    padding: 12px 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    background: #f4f6fa;
+    border: 1px solid #d5ddeb;
+    border-radius: 6px;
+}
+
+.task-html .algorithm {
+    font-family: inherit;
+}
+
 .task-box .answer {
     display:flex;
     justify-content: flex-end;

@@ -100,7 +100,7 @@ function answersCopyFilename(DOMDocument $document) {
 }
 
 function runOptionalAnswersCopy($answersFilename, $targetFilename) {
-    if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN' || !function_exists('popen')) {
+    if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
         return;
     }
 
@@ -115,9 +115,23 @@ function runOptionalAnswersCopy($answersFilename, $targetFilename) {
         . escapeshellarg($answersFilename)
         . ' ' . escapeshellarg($targetFilename)
         . ' >NUL 2>&1';
-    $process = @popen($command, 'r');
-    if (is_resource($process)) {
-        @pclose($process);
+    if (function_exists('exec')) {
+        $output = [];
+        $exitCode = 0;
+        @exec($command, $output, $exitCode);
+        return;
+    }
+
+    if (function_exists('shell_exec')) {
+        @shell_exec($command);
+        return;
+    }
+
+    if (function_exists('popen')) {
+        $process = @popen($command, 'r');
+        if (is_resource($process)) {
+            @pclose($process);
+        }
     }
 }
 
